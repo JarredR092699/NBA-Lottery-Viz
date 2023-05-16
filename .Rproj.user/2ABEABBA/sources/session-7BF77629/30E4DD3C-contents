@@ -1,0 +1,127 @@
+# Load Packages
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(janitor)
+library(rvest)
+library(RColorBrewer)
+library(viridis)
+library(ggthemes)
+library(scales)
+library(extrafont)
+
+
+# load data using rvest
+# copy web address into read_html() function
+data <- read_html("https://www.tankathon.com/pick_odds")
+
+# create new object for simplicity 
+lottery_table <- data %>% 
+  # grab css selector of table element
+  html_elements("#pick-distribution") %>%
+  # use the html_table() function to load elements into table style 
+  html_table()
+
+# Access the second element from the list 
+selected_table <- lottery_table[[1]]
+
+# check the column names 
+colnames(selected_table)
+
+# change the column names 
+selected_table <- selected_table %>% 
+  rename("pick_1" = `1`,
+         "pick_2" = `2`,
+         "pick_3" = `3`,
+         "pick_4" = `4`,
+         "pick_5" = `5`,
+         "pick_6" = `6`,
+         "pick_7" = `7`,
+         "pick_8" = `8`,
+         "pick_9" = `9`,
+         "pick_10" = `10`,
+         "pick_11" = `11`,
+         "pick_12" = `12`,
+         "pick_13" = `13`,
+         "pick_14" = `14`)
+
+# view our new dataframe 
+view(selected_table)
+
+# remove the "TIED" from the team names 
+selected_table$Team <- gsub("TIED", "", selected_table$Team)
+
+# view new data
+view(selected_table)
+
+# check the data types of our columns
+str(selected_table)
+
+# let's transform columns "pick_11" to "pick_14" as a numeric
+selected_table <- selected_table %>% 
+  mutate(pick_11 = as.numeric(pick_11),
+         pick_12 = as.numeric(pick_12),
+         pick_13 = as.numeric(pick_13),
+         pick_14 = as.numeric(pick_14))
+
+
+
+# pivot_longer 
+odds_table <- selected_table %>% 
+  pivot_longer(pick_1:pick_14, names_to = "Pick", values_to = "Odds") %>% 
+  na.omit() 
+
+
+
+
+# now that we have our odds_table, we can start visualizing the data
+team_order <- odds_table$Team[odds_table$Pick == "pick_1"]
+team_order <- team_order[order(odds_table$Odds[odds_table$Pick == "pick_1"])]
+
+# transform Team column to factor based on our team_order
+odds_table$Team <- factor(odds_table$Team, levels = team_order)
+# order our picks as factors 
+odds_table$Pick <- factor(odds_table$Pick, levels = c("pick_1", "pick_2", "pick_3", "pick_4", "pick_5", "pick_6", "pick_7", "pick_8", "pick_9", "pick_10", "pick_11", "pick_12", "pick_13", "pick_14"))
+
+# find number of categories in your data 
+num_categories <- length(unique(odds_table$Pick))
+
+# Create a custom color palette
+color_palette <- pals::brewer.spectral(n=14)
+
+# Create our chart
+draft_chart <- odds_table %>% 
+  ggplot(aes(x=Team, y=Odds, fill = Pick))+
+  geom_bar(stat="identity")+
+  coord_flip()+
+  scale_fill_manual(values = color_palette, breaks = c("pick_1", "pick_2", "pick_3",
+                                                       "pick_4", "pick_5", "pick_6",
+                                                       "pick_7", "pick_8", "pick_9",
+                                                       "pick_10", "pick_11", "pick_12",
+                                                       "pick_13", "pick_14"),
+                    labels = c("Pick 1", "Pick 2", "Pick 3", "Pick 4", "Pick 5", "Pick 6",
+                               "Pick 7", "Pick 8", "Pick 9", "Pick 10", "Pick 11", "Pick 12",
+                               "Pick 13", "Pick 14"))+
+  scale_x_discrete(labels = c("SAS", "HOU", "DET", "CHA", "POR", "ORL", "IND",
+                              "WAS", "UTA", "DAL", "CHI", "OKC", "TOR", "NO"), breaks = unique(odds_table$Team))+
+  scale_y_continuous(labels = percent_format(scale = 1, suffix = "%", accuracy = NULL))+
+  labs(
+    title = "2023 NBA Draft Lottery Probabilities",
+    subtitle = "Longer the color spreads, better odds that team has of landing that pick",
+    caption = "Data: Tankathon | Viz: @JellyJNBA"
+  )+
+  xlab("Team")+
+  ylab("Probability")+
+  theme(
+    plot.title = element_text(family = "Nirmala UI", face = "bold", size = 14),
+    plot.subtitle = element_text(family = "Nirmala UI", size = 10),
+    axis.text.x = element_text(family = "Microsoft Sans Serif", size = 12),
+    axis.text.y = element_text(family = "Microsoft Sans Serif", size = 12, face = "bold", color = "black"),
+    plot.background = element_rect(fill = "floralwhite"),
+    panel.background = element_rect(fill = "floralwhite"),
+    axis.ticks = element_blank()
+  )
+
+# save this chart 
+ggsave("nba_draft_probabilites.png", draft_chart, dpi = 300)
+
